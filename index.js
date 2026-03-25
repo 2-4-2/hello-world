@@ -12,91 +12,33 @@ if (typeof globalThis.File === 'undefined') {
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { Collection, Events, GatewayIntentBits, REST, Routes, Client } = require('discord.js');
-
-const config = require('./config.json');
+const { Client, Collection, Events, GatewayIntentBits, REST, Routes } = require('discord.js');
 const { createLogger } = require('./utils/logger');
 const { MusicManager } = require('./utils/musicManager');
+const config = require('./config.json');
 
-function cleanValue(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim().replace(/^['"]|['"]$/g, '');
-}
-}
+const token = (process.env.DISCORD_TOKEN || config.token || '').trim().replace(/^Bot\s+/i, '');
+const clientId = (process.env.CLIENT_ID || config.clientId || '').trim();
+const guildId = (process.env.GUILD_ID || config.guildId || '').trim();
+const logLevel = (process.env.LOG_LEVEL || config.logLevel || 'info').trim();
+const volume = Number(process.env.DEFAULT_VOLUME || config.defaultVolume || 0.5);
+const registerCommands = !['false', '0', 'no', 'off'].includes(String(process.env.REGISTER_COMMANDS || 'true').toLowerCase());
 
-function normalizeToken(rawToken) {
-  return cleanValue(rawToken).replace(/^Bot\s+/i, '');
-}
-
-function parseBoolean(value, fallback = true) {
-  if (value === undefined || value === null || value === '') return fallback;
-  const normalized = String(value).trim().toLowerCase();
-  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
-  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
-  return fallback;
-}
-
-const BOT_TOKEN = normalizeToken(process.env.DISCORD_TOKEN || config.token);
-const CLIENT_ID = cleanValue(process.env.CLIENT_ID || config.clientId);
-const GUILD_ID = cleanValue(process.env.GUILD_ID || config.guildId);
-const DEFAULT_VOLUME = Number(process.env.DEFAULT_VOLUME || config.defaultVolume || 0.5);
-const LOG_LEVEL = cleanValue(process.env.LOG_LEVEL || config.logLevel || 'info');
-const REGISTER_COMMANDS = parseBoolean(process.env.REGISTER_COMMANDS, true);
-const LOGIN_RETRY_SECONDS = Number(process.env.LOGIN_RETRY_SECONDS || 15);
-const HEALTHCHECK_SECONDS = Number(process.env.HEALTHCHECK_SECONDS || 30);
-
-const logger = createLogger(LOG_LEVEL);
-
-if (!BOT_TOKEN) {
-  throw new Error('DISCORD_TOKEN zorunludur. .env veya config.json ayarlayın.');
-}
-if (CLIENT_ID && !/^\d{17,20}$/.test(CLIENT_ID)) {
-  logger.warn('CLIENT_ID geçersiz görünüyor. Slash komut kaydı atlanacak.');
-}
+const logger = createLogger(logLevel);
+if (!token) throw new Error('DISCORD_TOKEN zorunlu.');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 client.commands = new Collection();
 client.logger = logger;
-client.musicManager = new MusicManager(logger, DEFAULT_VOLUME);
+client.musicManager = new MusicManager(logger, volume);
 
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith('.js'));
-const commandsData = [];
-for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if (!command.data || !command.execute) {
-    logger.warn(`Geçersiz komut atlandı: ${file}`);
-    continue;
+const commands = [];
+for (const file of fs.readdirSync(path.join(__dirname, 'commands')).filter((f) => f.endsWith('.js'))) {
+  const command = require(path.join(__dirname, 'commands', file));
+  if (command?.data && command?.execute) {
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
   }
-  client.commands.set(command.data.name, command);
-  commandsData.push(command.data.toJSON());
-}
-
-function logAuthTroubleshooting() {
-  logger.error('Discord API kimlik doğrulama hatası.');
-  logger.error('1) DISCORD_TOKEN doğru mu?');
-  logger.error('2) CLIENT_ID uygulama ile eşleşiyor mu?');
-  logger.error('3) Railway ENV içinde boşluk/tırnak var mı?');
-}
-
-async function registerSlashCommands() {
-  if (!REGISTER_COMMANDS) {
-    logger.warn('REGISTER_COMMANDS=false olduğu için komut kaydı atlandı.');
-    return;
-  }
-  if (!CLIENT_ID || !/^\d{17,20}$/.test(CLIENT_ID)) {
-    logger.warn('CLIENT_ID eksik/geçersiz. Bot online olacak, slash komut kaydı atlandı.');
-    return;
-  }
-
-  const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-  if (GUILD_ID) {
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commandsData });
-    logger.info(`Guild slash komutları yüklendi (${GUILD_ID}).`);
-    return;
-  }
-  await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commandsData });
-  logger.info('Global slash komutları yüklendi.');
 }
 
 for (const file of fs.readdirSync(path.join(__dirname, 'events')).filter((f) => f.endsWith('.js'))) {
@@ -105,10 +47,39 @@ for (const file of fs.readdirSync(path.join(__dirname, 'events')).filter((f) => 
   else client.on(event.name, (...args) => event.execute(...args));
 }
 
-client.on(Events.ShardDisconnect, (event, shardId) => logger.warn(`Shard bağlantısı koptu: ${shardId}`, event));
-client.on(Events.ShardReconnecting, (shardId) => logger.warn(`Shard yeniden bağlanıyor: ${shardId}`));
-client.on(Events.ShardResume, (id) => logger.info(`Shard yeniden aktif: ${id}`));
-client.on(Events.Error, (error) => logger.error('Discord client hatası', error));
+client.on(Events.Error, (err) => logger.error('Discord client error', err));
+process.on('uncaughtException', (err) => logger.error('uncaughtException', err));
+process.on('unhandledRejection', (err) => logger.error('unhandledRejection', err));
 
-process.on('uncaughtException', (error) => logger.error('uncaughtException', error));
-process.on('unhandledRejection', (reason) => logger.error('unhandledRejection', reason));
+async function registerSlashCommands() {
+  if (!registerCommands) return logger.warn('REGISTER_COMMANDS=false, komut kaydı atlandı.');
+  if (!/^\d{17,20}$/.test(clientId)) return logger.warn('CLIENT_ID eksik/geçersiz, komut kaydı atlandı.');
+
+  const rest = new REST({ version: '10' }).setToken(token);
+  if (guildId) {
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+    return logger.info(`Guild komutları yüklendi (${guildId}).`);
+  }
+  await rest.put(Routes.applicationCommands(clientId), { body: commands });
+  logger.info('Global komutlar yüklendi.');
+}
+
+async function boot() {
+  while (!client.isReady()) {
+    try {
+      logger.info('Discord login deneniyor...');
+      await client.login(token);
+    } catch (err) {
+      logger.error('Login başarısız, 15sn sonra tekrar deneniyor.', err);
+      await new Promise((r) => setTimeout(r, 15000));
+    }
+  }
+
+  try {
+    await registerSlashCommands();
+  } catch (err) {
+    logger.error('Komut kaydı başarısız, bot çalışmaya devam edecek.', err);
+  }
+}
+
+void boot();
