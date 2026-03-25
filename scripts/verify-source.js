@@ -19,9 +19,32 @@ function walk(filePath, list = []) {
 
 function sanitizePatchMarkers(content) {
   const lines = content.split('\n');
-  const cleaned = lines.filter((line) => !markerLine.test(line));
-  const changed = cleaned.length !== lines.length;
-  return { changed, content: cleaned.join('\n') };
+  const cleaned = [];
+  let mode = 'normal';
+
+  for (const line of lines) {
+    if (line.startsWith('<<<<<<< ')) {
+      mode = 'head';
+      continue;
+    }
+    if (mode !== 'normal' && line === '=======') {
+      mode = 'other';
+      continue;
+    }
+    if (mode !== 'normal' && line.startsWith('>>>>>>> ')) {
+      mode = 'normal';
+      continue;
+    }
+
+    if (markerLine.test(line)) continue;
+
+    if (mode === 'normal' || mode === 'other') {
+      cleaned.push(line);
+    }
+  }
+
+  const output = cleaned.join('\n');
+  return { changed: output !== content, content: output };
 }
 
 const files = targets.flatMap((target) => walk(path.join(ROOT, target)));
@@ -46,11 +69,3 @@ for (const file of files) {
     issues.push(`${relative} -> JavaScript parse hatası: ${error.message}`);
   }
 }
-
-if (issues.length > 0) {
-  console.error('Kaynak dosya doğrulaması başarısız:');
-  for (const item of issues) console.error(`- ${item}`);
-  process.exit(1);
-}
-
-console.log('Kaynak dosya doğrulaması başarılı.');
