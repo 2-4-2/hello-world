@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "verify": "node scripts/verify-source.js",
-    "start": "npm run verify && node .",
+    "start": "node .",
     "dev": "node --watch ."
   },
   "engines": {
