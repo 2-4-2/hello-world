@@ -22,6 +22,7 @@ function cleanValue(value) {
   if (value === undefined || value === null) return '';
   return String(value).trim().replace(/^['"]|['"]$/g, '');
 }
+}
 
 function normalizeToken(rawToken) {
   return cleanValue(rawToken).replace(/^Bot\s+/i, '');
@@ -46,11 +47,11 @@ const HEALTHCHECK_SECONDS = Number(process.env.HEALTHCHECK_SECONDS || 30);
 
 const logger = createLogger(LOG_LEVEL);
 
-if (!BOT_TOKEN || !CLIENT_ID) {
-  throw new Error('DISCORD_TOKEN ve CLIENT_ID zorunludur. .env veya config.json ayarlayın.');
+if (!BOT_TOKEN) {
+  throw new Error('DISCORD_TOKEN zorunludur. .env veya config.json ayarlayın.');
 }
-if (!/^\d{17,20}$/.test(CLIENT_ID)) {
-  throw new Error('CLIENT_ID yalnızca Discord Application ID olmalıdır (sadece rakam).');
+if (CLIENT_ID && !/^\d{17,20}$/.test(CLIENT_ID)) {
+  logger.warn('CLIENT_ID geçersiz görünüyor. Slash komut kaydı atlanacak.');
 }
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
@@ -68,11 +69,23 @@ for (const file of commandFiles) {
     continue;
   }
   client.commands.set(command.data.name, command);
-@@ -79,55 +80,73 @@ function logAuthTroubleshooting() {
+  commandsData.push(command.data.toJSON());
+}
+
+function logAuthTroubleshooting() {
+  logger.error('Discord API kimlik doğrulama hatası.');
+  logger.error('1) DISCORD_TOKEN doğru mu?');
+  logger.error('2) CLIENT_ID uygulama ile eşleşiyor mu?');
+  logger.error('3) Railway ENV içinde boşluk/tırnak var mı?');
+}
 
 async function registerSlashCommands() {
   if (!REGISTER_COMMANDS) {
     logger.warn('REGISTER_COMMANDS=false olduğu için komut kaydı atlandı.');
+    return;
+  }
+  if (!CLIENT_ID || !/^\d{17,20}$/.test(CLIENT_ID)) {
+    logger.warn('CLIENT_ID eksik/geçersiz. Bot online olacak, slash komut kaydı atlandı.');
     return;
   }
 
@@ -99,46 +112,3 @@ client.on(Events.Error, (error) => logger.error('Discord client hatası', error)
 
 process.on('uncaughtException', (error) => logger.error('uncaughtException', error));
 process.on('unhandledRejection', (reason) => logger.error('unhandledRejection', reason));
-
-let loginInProgress = false;
-
-async function loginWithRetry() {
-  if (loginInProgress || client.isReady()) return;
-  loginInProgress = true;
-
-  while (!client.isReady()) {
-    try {
-      logger.info('Discord giriş denemesi başlıyor...');
-      await client.login(BOT_TOKEN);
-      logger.info('Discord giriş başarılı.');
-      break;
-    } catch (error) {
-      if (error?.status === 401 || error?.code === 'TokenInvalid') {
-        logAuthTroubleshooting();
-      }
-      logger.error(`Discord giriş başarısız. ${LOGIN_RETRY_SECONDS}s sonra tekrar denenecek.`, error);
-      await new Promise((resolve) => setTimeout(resolve, LOGIN_RETRY_SECONDS * 1000));
-    }
-  }
-
-  loginInProgress = false;
-}
-
-function startConnectionWatchdog() {
-  setInterval(() => {
-    if (!client.isReady()) {
-      logger.warn('Bot offline görünüyor, yeniden giriş denenecek.');
-      void loginWithRetry();
-    }
-  }, Math.max(10, HEALTHCHECK_SECONDS) * 1000).unref();
-}
-
-(async () => {
-  startConnectionWatchdog();
-  await loginWithRetry();
-  try {
-    await registerSlashCommands();
-  } catch (error) {
-    logger.error('Slash komutları yüklenemedi, bot online kalacak.', error);
-  }
-})();
