@@ -1,6 +1,5 @@
 const { AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, createAudioPlayer, createAudioResource, entersState, joinVoiceChannel } = require('@discordjs/voice');
 const play = require('play-dl');
-const ytSearch = require('yt-search');
 
 class GuildMusicSubscription {
   constructor(guildId, logger, volume = 0.5) {
@@ -41,10 +40,7 @@ class GuildMusicSubscription {
       const v = await play.video_basic_info(query);
       return { title: v.video_details.title, url: v.video_details.url, duration: v.video_details.durationRaw ?? 'Bilinmiyor', requestedBy: null };
     }
-    try {
-      const r = await ytSearch(query); const v = r.videos?.[0];
-      if (v) return { title: v.title, url: v.url, duration: v.timestamp ?? 'Bilinmiyor', requestedBy: null };
-    } catch (e) { this.logger.warn(`yt-search başarısız, play-dl araması deneniyor [${this.guildId}]`, e); }
+
     const v = (await play.search(query, { limit: 1, source: { youtube: 'video' } }))?.[0];
     if (!v) throw new Error('Arama sonucu bulunamadı. Başka bir şarkı adı veya doğrudan YouTube linki dene.');
     return { title: v.title, url: v.url, duration: v.durationRaw ?? 'Bilinmiyor', requestedBy: null };
@@ -70,31 +66,3 @@ class GuildMusicSubscription {
       await this.notify(`❌ Şarkı oynatılamadı (${e?.message || 'bilinmeyen hata'}), sıradaki parçaya geçiliyor.`);
       this.currentTrack = null; await this.processQueue();
     }
-  }
-
-  async notify(message) { if (!this.textChannel) return; try { await this.textChannel.send(message); } catch (_) {} }
-  skip() { if (!this.currentTrack) throw new Error('Şu an çalan parça yok.'); this.audioPlayer.stop(true); return this.currentTrack; }
-  stop() { this.queue.length = 0; this.currentTrack = null; this.audioPlayer.stop(true); this.destroy(); }
-  pause() { if (this.audioPlayer.state.status !== AudioPlayerStatus.Playing) throw new Error('Aktif çalma bulunmuyor.'); this.audioPlayer.pause(); }
-  resume() { if (!this.audioPlayer.unpause()) throw new Error('Devam ettirilecek duraklatılmış parça yok.'); }
-
-  getQueueText() {
-    const now = this.currentTrack ? `🎵 Şu an: **${this.currentTrack.title}**\n` : '🎵 Şu an çalan parça yok.\n';
-    const queued = this.queue.slice(0, 10).map((t, i) => `${i + 1}. ${t.title} (${t.duration})`).join('\n');
-    return `${now}${queued ? `\n📜 Sıradakiler:\n${queued}` : '\n📜 Sırada parça yok.'}`;
-  }
-
-  destroy() { try { this.connection?.destroy(); } catch (_) {} this.connection = null; this.voiceChannelId = null; this.voiceAdapterCreator = null; this.reconnectAttempts = 0; }
-}
-
-class MusicManager {
-  constructor(logger, defaultVolume) { this.logger = logger; this.defaultVolume = defaultVolume; this.subscriptions = new Map(); }
-  get(guildId) { return this.subscriptions.get(guildId); }
-  getOrCreate(guildId) {
-    if (!this.subscriptions.has(guildId)) this.subscriptions.set(guildId, new GuildMusicSubscription(guildId, this.logger, this.defaultVolume));
-    return this.subscriptions.get(guildId);
-  }
-  cleanup(guildId) { const s = this.subscriptions.get(guildId); if (!s) return; s.destroy(); this.subscriptions.delete(guildId); }
-}
-
-module.exports = { MusicManager };
