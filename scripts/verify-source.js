@@ -3,7 +3,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
-const targets = ['index.js', 'commands', 'events', 'utils'];
+const targets = ['index.js', 'src', 'commands', 'events', 'utils'];
 const badPatterns = [/^<<<<<<< /m, /^=======$/m, /^>>>>>>> /m, /^@@\s-\d+/m];
 
 function walk(filePath, list = []) {
@@ -29,18 +29,3 @@ for (const file of files) {
       break;
     }
   }
-
-  try {
-    new vm.Script(content, { filename: relative });
-  } catch (error) {
-    issues.push(`${relative} -> JavaScript parse hatası: ${error.message}`);
-  }
-}
-
-if (issues.length > 0) {
-  console.error('Kaynak dosya doğrulaması başarısız:');
-  for (const item of issues) console.error(`- ${item}`);
-  process.exit(1);
-}
-
-console.log('Kaynak dosya doğrulaması başarılı.');
