@@ -133,17 +133,33 @@ class GuildMusicSubscription {
       };
     }
 
-    const result = await ytSearch(query);
-    const video = result.videos?.[0];
+  try {
+      const result = await ytSearch(query);
+      const video = result.videos?.[0];
+
+      if (video) {
+        return {
+          title: video.title,
+          url: video.url,
+          duration: video.timestamp ?? 'Bilinmiyor',
+          requestedBy: null,
+        };
+      }
+    } catch (error) {
+      this.logger.warn(`yt-search başarısız, play-dl araması deneniyor [${this.guildId}]`, error);
+    }
+
+    const fallback = await play.search(query, { limit: 1, source: { youtube: 'video' } });
+    const video = fallback?.[0];
 
     if (!video) {
-      throw new Error('Arama sonucu bulunamadı.');
+      throw new Error('Arama sonucu bulunamadı. Başka bir şarkı adı veya doğrudan YouTube linki dene.');
     }
 
     return {
       title: video.title,
       url: video.url,
-      duration: video.timestamp ?? 'Bilinmiyor',
+      duration: video.durationRaw ?? 'Bilinmiyor',
       requestedBy: null,
     };
   }
@@ -169,11 +185,7 @@ class GuildMusicSubscription {
     if (this.audioPlayer.state.status !== AudioPlayerStatus.Idle && this.currentTrack) {
       return;
     }
-
-    const nextTrack = this.queue.shift();
-
-    if (!nextTrack) {
-      this.logger.debug(`Queue finished [${this.guildId}]`);
+@@ -177,51 +193,51 @@ class GuildMusicSubscription {
       return;
     }
 
@@ -199,7 +211,7 @@ class GuildMusicSubscription {
       this.logger.info(`Now playing [${this.guildId}] ${nextTrack.title}`);
     } catch (error) {
       this.logger.error(`Track play failed [${this.guildId}]`, error);
-      await this.notify('❌ Şarkı oynatılamadı, sıradaki parçaya geçiliyor.');
+      await this.notify(`❌ Şarkı oynatılamadı (${error?.message || 'bilinmeyen hata'}), sıradaki parçaya geçiliyor.`);
       this.currentTrack = null;
       await this.processQueue();
     }
@@ -225,76 +237,3 @@ class GuildMusicSubscription {
   stop() {
     this.queue.length = 0;
     this.currentTrack = null;
-    this.audioPlayer.stop(true);
-    this.destroy();
-  }
-
-  pause() {
-    if (this.audioPlayer.state.status !== AudioPlayerStatus.Playing) {
-      throw new Error('Aktif çalma bulunmuyor.');
-    }
-    this.audioPlayer.pause();
-  }
-
-  resume() {
-    if (!this.audioPlayer.unpause()) {
-      throw new Error('Devam ettirilecek duraklatılmış parça yok.');
-    }
-  }
-
-  getQueueText() {
-    const playing = this.currentTrack
-      ? `🎵 Şu an: **${this.currentTrack.title}**\n`
-      : '🎵 Şu an çalan parça yok.\n';
-
-    const queued = this.queue
-      .slice(0, 10)
-      .map((track, index) => `${index + 1}. ${track.title} (${track.duration})`)
-      .join('\n');
-
-    return `${playing}${queued ? `\n📜 Sıradakiler:\n${queued}` : '\n📜 Sırada parça yok.'}`;
-  }
-
-  destroy() {
-    try {
-      this.connection?.destroy();
-    } catch (error) {
-      this.logger.warn(`Destroy connection failed [${this.guildId}]`, error);
-    }
-    this.connection = null;
-    this.voiceChannelId = null;
-    this.voiceAdapterCreator = null;
-    this.reconnectAttempts = 0;
-  }
-}
-
-class MusicManager {
-  constructor(logger, defaultVolume) {
-    this.logger = logger;
-    this.defaultVolume = defaultVolume;
-    this.subscriptions = new Map();
-  }
-
-  get(guildId) {
-    return this.subscriptions.get(guildId);
-  }
-
-  getOrCreate(guildId) {
-    if (!this.subscriptions.has(guildId)) {
-      this.subscriptions.set(
-        guildId,
-        new GuildMusicSubscription(guildId, this.logger, this.defaultVolume),
-      );
-    }
-    return this.subscriptions.get(guildId);
-  }
-
-  cleanup(guildId) {
-    const subscription = this.subscriptions.get(guildId);
-    if (!subscription) return;
-    subscription.destroy();
-    this.subscriptions.delete(guildId);
-  }
-}
-
-module.exports = { MusicManager };
