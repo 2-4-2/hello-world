@@ -4,8 +4,7 @@ const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 const targets = ['index.js', 'commands', 'events', 'utils'];
-const markerPatterns = [/^<<<<<<< /m, /^=======$/m, /^>>>>>>> /m, /^@@\s-\d+/m];
-const markerLine = /^(<<<<<<< |=======|>>>>>>> |@@\s-\d+)/;
+const badPatterns = [/^<<<<<<< /m, /^=======$/m, /^>>>>>>> /m, /^@@\s-\d+/m];
 
 function walk(filePath, list = []) {
   const stat = fs.statSync(filePath);
@@ -17,49 +16,17 @@ function walk(filePath, list = []) {
   return list;
 }
 
-function sanitizePatchMarkers(content) {
-  const lines = content.split('\n');
-  const cleaned = [];
-  let mode = 'normal';
-
-  for (const line of lines) {
-    if (line.startsWith('<<<<<<< ')) {
-      mode = 'head';
-      continue;
-    }
-    if (mode !== 'normal' && line === '=======') {
-      mode = 'other';
-      continue;
-    }
-    if (mode !== 'normal' && line.startsWith('>>>>>>> ')) {
-      mode = 'normal';
-      continue;
-    }
-
-    if (markerLine.test(line)) continue;
-
-    if (mode === 'normal' || mode === 'other') {
-      cleaned.push(line);
-    }
-  }
-
-  const output = cleaned.join('\n');
-  return { changed: output !== content, content: output };
-}
-
 const files = targets.flatMap((target) => walk(path.join(ROOT, target)));
 const issues = [];
 
 for (const file of files) {
   const relative = path.relative(ROOT, file);
-  let content = fs.readFileSync(file, 'utf8');
+  const content = fs.readFileSync(file, 'utf8');
 
-  if (markerPatterns.some((pattern) => pattern.test(content))) {
-    const sanitized = sanitizePatchMarkers(content);
-    if (sanitized.changed) {
-      fs.writeFileSync(file, sanitized.content, 'utf8');
-      content = sanitized.content;
-      console.warn(`Patch/conflict satırları temizlendi: ${relative}`);
+  for (const pattern of badPatterns) {
+    if (pattern.test(content)) {
+      issues.push(`${relative} -> patch/conflict kalıntısı: ${pattern}`);
+      break;
     }
   }
 
@@ -69,3 +36,11 @@ for (const file of files) {
     issues.push(`${relative} -> JavaScript parse hatası: ${error.message}`);
   }
 }
+
+if (issues.length > 0) {
+  console.error('Kaynak dosya doğrulaması başarısız:');
+  for (const item of issues) console.error(`- ${item}`);
+  process.exit(1);
+}
+
+console.log('Kaynak dosya doğrulaması başarılı.');
