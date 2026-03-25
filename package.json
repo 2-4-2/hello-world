@@ -4,7 +4,8 @@
   "description": "Advanced Discord music bot with slash commands, queue system and resilient voice handling.",
   "main": "index.js",
   "scripts": {
-    "start": "node .",
+    "verify": "node scripts/verify-source.js",
+    "start": "npm run verify && node .",
     "dev": "node --watch ."
   },
   "engines": {
