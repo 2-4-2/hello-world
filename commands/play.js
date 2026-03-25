@@ -5,28 +5,20 @@ module.exports = {
     .setName('cal')
     .setDescription('YouTube linki veya isim ile şarkı çalar.')
     .addStringOption((option) =>
-      option
-        .setName('sorgu')
-        .setDescription('YouTube URL veya şarkı adı')
-        .setRequired(true),
+      option.setName('sorgu').setDescription('YouTube URL veya şarkı adı').setRequired(true),
     ),
 
   async execute(interaction) {
     try {
       const query = interaction.options.getString('sorgu', true);
-      const memberChannel = interaction.member?.voice?.channel;
- const memberChannel = interaction.member?.voice?.channel;
+      var memberChannel = interaction.member?.voice?.channel;
 
       if (!memberChannel) {
-        await interaction.reply({
-          content: '❌ Önce bir ses kanalına katılmalısın.',
-          ephemeral: true,
-        });
+        await interaction.reply({ content: '❌ Önce bir ses kanalına katılmalısın.', ephemeral: true });
         return;
       }
 
       await interaction.deferReply();
-
       const subscription = interaction.client.musicManager.getOrCreate(interaction.guildId);
       const track = await subscription.enqueue(
         query,
