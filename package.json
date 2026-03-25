@@ -1,0 +1,20 @@
+{
+  "name": "professional-discord-music-bot",
+  "version": "1.0.0",
+  "description": "Advanced Discord music bot with slash commands, queue system and resilient voice handling.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node .",
+    "dev": "node --watch ."
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.17.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "play-dl": "^1.9.7",
+    "yt-search": "^2.13.1"
+  }
+}
