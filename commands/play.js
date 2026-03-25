@@ -15,6 +15,7 @@ module.exports = {
     try {
       const query = interaction.options.getString('sorgu', true);
       const memberChannel = interaction.member?.voice?.channel;
+ const memberChannel = interaction.member?.voice?.channel;
 
       if (!memberChannel) {
         await interaction.reply({
@@ -39,12 +40,14 @@ module.exports = {
       );
     } catch (error) {
       interaction.client.logger.error('Komut /cal çalıştırılamadı', error);
+      const message = error?.message
+        ? `❌ Şarkı eklenemedi: ${error.message}`
+        : '❌ Şarkı eklenirken hata oluştu.';
+
       if (interaction.deferred || interaction.replied) {
-        await interaction.editReply('❌ Şarkı eklenirken hata oluştu.').catch(() => null);
+        await interaction.editReply(message).catch(() => null);
       } else {
-        await interaction
-          .reply({ content: '❌ Şarkı eklenirken hata oluştu.', ephemeral: true })
-          .catch(() => null);
+        await interaction.reply({ content: message, ephemeral: true }).catch(() => null);
       }
     }
   },
