@@ -8,7 +8,7 @@
     "dev": "node --watch ."
   },
   "engines": {
-    "node": ">=18.17.0"
+      "node": ">=18.17.0 <=20.x"
   },
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
